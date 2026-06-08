@@ -60,22 +60,37 @@ export function PerfomanceJournalPage({ data, setData, isAdmin }: PerfomanceJour
       <Header title="Журнал успеваемости" text="Добавление оценок по студентам, дисциплинам, учебному году и семестру." />
       {isAdmin && (
         <form className="card form-grid" onSubmit={handleSubmit}>
-          <Select value={form.studentId} onChange={(event) => setForm({ ...form, studentId: Number(event.target.value) })}>
-            {data.students.map((student) => <option key={student.id} value={student.id}>{student.lastName} {student.firstName} {student.middleName}</option>)}
-          </Select>
-          <Select value={form.disciplineId} onChange={(event) => setForm({ ...form, disciplineId: Number(event.target.value) })}>
-            {data.disciplines.map((discipline) => <option key={discipline.id} value={discipline.id}>{discipline.name}</option>)}
-          </Select>
-          <Input type="number" placeholder="Учебный год" value={form.studyYear} onChange={(event) => setForm({ ...form, studyYear: Number(event.target.value) })} />
-          <Input type="number" placeholder="Семестр" value={form.semester} onChange={(event) => setForm({ ...form, semester: Number(event.target.value) })} />
-          <Select value={form.grade} onChange={(event) => setForm({ ...form, grade: event.target.value })}>
-            <option value="5">5</option>
-            <option value="4">4</option>
-            <option value="3">3</option>
-            <option value="2">2</option>
-            <option value="Зачет">Зачет</option>
-            <option value="Незачет">Незачет</option>
-          </Select>
+          <label className="field-stack">
+            <span>Студент</span>
+            <Select value={form.studentId} onChange={(event) => setForm({ ...form, studentId: Number(event.target.value) })}>
+              {data.students.map((student) => <option key={student.id} value={student.id}>{student.lastName} {student.firstName} {student.middleName}</option>)}
+            </Select>
+          </label>
+          <label className="field-stack">
+            <span>Дисциплина</span>
+            <Select value={form.disciplineId} onChange={(event) => setForm({ ...form, disciplineId: Number(event.target.value) })}>
+              {data.disciplines.map((discipline) => <option key={discipline.id} value={discipline.id}>{discipline.name}</option>)}
+            </Select>
+          </label>
+          <label className="field-stack">
+            <span>Учебный год</span>
+            <Input type="number" placeholder="Например, 2026" value={form.studyYear} onChange={(event) => setForm({ ...form, studyYear: Number(event.target.value) })} />
+          </label>
+          <label className="field-stack">
+            <span>Семестр</span>
+            <Input type="number" placeholder="1-12" value={form.semester} onChange={(event) => setForm({ ...form, semester: Number(event.target.value) })} />
+          </label>
+          <label className="field-stack">
+            <span>Оценка</span>
+            <Select value={form.grade} onChange={(event) => setForm({ ...form, grade: event.target.value })}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="Зачет">Зачет</option>
+              <option value="Незачет">Незачет</option>
+            </Select>
+          </label>
           <Button type="submit">{editingId ? "Сохранить" : "Добавить оценку"}</Button>
         </form>
       )}

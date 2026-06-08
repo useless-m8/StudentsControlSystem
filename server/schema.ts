@@ -26,10 +26,14 @@ CREATE TABLE IF NOT EXISTS student_groups (
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   login VARCHAR(50) NOT NULL UNIQUE,
+  last_name VARCHAR(80) NOT NULL DEFAULT '',
+  first_name VARCHAR(80) NOT NULL DEFAULT '',
+  middle_name VARCHAR(80) NOT NULL DEFAULT '',
   password VARCHAR(100) NOT NULL DEFAULT '',
   password_hash VARCHAR(255),
-  role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'user')),
-  group_id INTEGER REFERENCES student_groups(id) ON DELETE SET NULL
+  role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'education_staff', 'teacher')),
+  group_id INTEGER REFERENCES student_groups(id) ON DELETE SET NULL,
+  discipline_id INTEGER REFERENCES disciplines(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS students (
@@ -40,6 +44,18 @@ CREATE TABLE IF NOT EXISTS students (
   admission_year INTEGER NOT NULL CHECK (admission_year BETWEEN 1990 AND 2100),
   education_form_id INTEGER NOT NULL REFERENCES education_forms(id) ON DELETE RESTRICT,
   group_id INTEGER NOT NULL REFERENCES student_groups(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS teacher_groups (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES student_groups(id) ON DELETE RESTRICT,
+  PRIMARY KEY (user_id, group_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_disciplines (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  discipline_id INTEGER NOT NULL REFERENCES disciplines(id) ON DELETE RESTRICT,
+  PRIMARY KEY (user_id, discipline_id)
 );
 
 CREATE TABLE IF NOT EXISTS curriculum (
@@ -63,8 +79,27 @@ CREATE TABLE IF NOT EXISTS performance_records (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS middle_name VARCHAR(80) NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES student_groups(id) ON DELETE SET NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id INTEGER REFERENCES students(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS discipline_id INTEGER REFERENCES disciplines(id) ON DELETE SET NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+UPDATE users SET role = 'education_staff' WHERE role = 'user';
+ALTER TABLE users
+  ADD CONSTRAINT users_role_check
+  CHECK (role IN ('admin', 'education_staff', 'teacher'));
+
+INSERT INTO teacher_groups (user_id, group_id)
+SELECT id, group_id FROM users
+WHERE role = 'teacher' AND group_id IS NOT NULL
+ON CONFLICT (user_id, group_id) DO NOTHING;
+
+INSERT INTO teacher_disciplines (user_id, discipline_id)
+SELECT id, discipline_id FROM users
+WHERE role = 'teacher' AND discipline_id IS NOT NULL
+ON CONFLICT (user_id, discipline_id) DO NOTHING;
 
 ALTER TABLE performance_records DROP CONSTRAINT IF EXISTS performance_records_grade_check;
 ALTER TABLE performance_records
@@ -108,7 +143,13 @@ SELECT 'admin', '', 'admin', NULL
 ON CONFLICT (login) DO NOTHING;
 
 INSERT INTO users (login, password, role, group_id)
-SELECT 'user', '', 'user', id FROM student_groups WHERE name = 'ИС-22'
+SELECT 'staff', '', 'education_staff', NULL
+ON CONFLICT (login) DO NOTHING;
+
+INSERT INTO users (login, password, role, group_id, discipline_id)
+SELECT 'teacher', '', 'teacher', sg.id, d.id
+FROM student_groups sg, disciplines d
+WHERE sg.name = 'ИС-22' AND d.name = 'Базы данных'
 ON CONFLICT (login) DO NOTHING;
 
 INSERT INTO students (last_name, first_name, middle_name, admission_year, education_form_id, group_id)
@@ -220,17 +261,61 @@ async function cleanupDemoDuplicates() {
 
 async function ensureDemoPasswords() {
   const adminHash = await bcrypt.hash("admin", 10);
-  const userHash = await bcrypt.hash("user", 10);
+  const staffHash = await bcrypt.hash("staff", 10);
+  const teacherHash = await bcrypt.hash("teacher", 10);
 
-  await query("UPDATE users SET password_hash = $1, password = '' WHERE login = 'admin'", [adminHash]);
   await query(
     `UPDATE users
      SET password_hash = $1,
        password = '',
+       last_name = COALESCE(NULLIF(last_name, ''), 'Системный'),
+       first_name = COALESCE(NULLIF(first_name, ''), 'Администратор'),
+       middle_name = COALESCE(middle_name, '')
+     WHERE login = 'admin'`,
+    [adminHash]
+  );
+  await query(
+    `UPDATE users
+     SET password_hash = $1,
+       password = '',
+       role = 'education_staff',
+       last_name = COALESCE(NULLIF(last_name, ''), 'Смирнова'),
+       first_name = COALESCE(NULLIF(first_name, ''), 'Мария'),
+       middle_name = COALESCE(NULLIF(middle_name, ''), 'Алексеевна'),
+       group_id = NULL,
+       student_id = NULL,
+       discipline_id = NULL
+     WHERE login IN ('user', 'staff')`,
+    [staffHash]
+  );
+  await query(
+    `UPDATE users
+     SET password_hash = $1,
+       password = '',
+       role = 'teacher',
+       last_name = COALESCE(NULLIF(last_name, ''), 'Кузнецов'),
+       first_name = COALESCE(NULLIF(first_name, ''), 'Андрей'),
+       middle_name = COALESCE(NULLIF(middle_name, ''), 'Викторович'),
        group_id = COALESCE(group_id, (SELECT id FROM student_groups WHERE name = 'ИС-22')),
-       student_id = COALESCE(student_id, (SELECT id FROM students WHERE last_name = 'Иванов' ORDER BY id LIMIT 1))
-     WHERE login = 'user'`,
-    [userHash]
+       student_id = NULL,
+       discipline_id = COALESCE(discipline_id, (SELECT id FROM disciplines WHERE name = 'Базы данных'))
+     WHERE login = 'teacher'`,
+    [teacherHash]
+  );
+
+  await query(
+    `INSERT INTO teacher_groups (user_id, group_id)
+     SELECT u.id, sg.id
+     FROM users u, student_groups sg
+     WHERE u.login = 'teacher' AND sg.name = 'ИС-22'
+     ON CONFLICT (user_id, group_id) DO NOTHING`
+  );
+  await query(
+    `INSERT INTO teacher_disciplines (user_id, discipline_id)
+     SELECT u.id, d.id
+     FROM users u, disciplines d
+     WHERE u.login = 'teacher' AND d.name = 'Базы данных'
+     ON CONFLICT (user_id, discipline_id) DO NOTHING`
   );
 }
 

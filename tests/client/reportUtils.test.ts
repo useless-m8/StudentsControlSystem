@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AppData } from "../../src/types/app";
-import { buildReportRows, filterStudentsByGroup } from "../../src/pages/reportUtils";
+import { buildReportRows, buildReportSummary, filterStudentsByGroup } from "../../src/pages/reportUtils";
 
 const data: AppData = {
   educationForms: [{ id: 1, name: "Очная" }],
@@ -97,5 +97,16 @@ describe("Client / Отчеты по успеваемости", () => {
     expect(row.recordsCount).toBe(0);
     expect(row.averageGrade).toBe("-");
     expect(row.debts).toBe(0);
+  });
+
+  it("считает сводку только по выбранным студентам", () => {
+    const students = filterStudentsByGroup(data, "2");
+    const summary = buildReportSummary(data, students);
+
+    expect(summary).toEqual({
+      studentsCount: 1,
+      disciplinesCount: 1,
+      gradesCount: 1,
+    });
   });
 });

@@ -9,19 +9,21 @@ type DataTableProps = {
 
 export function DataTable({ children, empty, emptyText, colSpan }: DataTableProps) {
   return (
-    <div className="card">
-      <table>
-        {children}
-        {empty && (
-          <tbody>
-            <tr>
-              <td colSpan={colSpan} className="empty">
-                {emptyText}
-              </td>
-            </tr>
-          </tbody>
-        )}
-      </table>
+    <div className="card table-card">
+      <div className="table-scroll">
+        <table>
+          {children}
+          {empty && (
+            <tbody>
+              <tr>
+                <td colSpan={colSpan} className="empty">
+                  {emptyText}
+                </td>
+              </tr>
+            </tbody>
+          )}
+        </table>
+      </div>
     </div>
   );
 }

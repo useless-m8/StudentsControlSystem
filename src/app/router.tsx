@@ -1,1 +1,1 @@
-export type Page = "students" | "directories" | "curriculum" | "performance" | "reports";
+export type Page = "students" | "directories" | "curriculum" | "performance" | "reports" | "users";

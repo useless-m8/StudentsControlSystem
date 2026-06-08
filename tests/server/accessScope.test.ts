@@ -2,70 +2,128 @@ import { describe, expect, it } from "vitest";
 import { getDataScope } from "../../server/accessScope.js";
 import type { AuthUser } from "../../server/auth.js";
 
-describe("Server / Разграничение доступа", () => {
-  it("администратор видит все группы и всех студентов", () => {
+describe("Server / access scope", () => {
+  it("admin sees all groups, students and disciplines", () => {
     const admin: AuthUser = {
       id: 1,
       login: "admin",
+      lastName: "Системный",
+      firstName: "Администратор",
+      middleName: "",
       role: "admin",
       groupId: null,
+      groupIds: [],
       studentId: null,
+      disciplineId: null,
+      disciplineIds: [],
     };
 
     expect(getDataScope(admin)).toEqual({
       groupScope: null,
       studentScope: null,
+      disciplineScope: null,
     });
   });
 
-  it("студент ограничивается своей группой", () => {
-    const student: AuthUser = {
+  it("education staff is not limited by a discipline or group", () => {
+    const staff: AuthUser = {
       id: 2,
-      login: "ivanov",
-      role: "user",
-      groupId: 3,
-      studentId: 7,
+      login: "staff",
+      lastName: "Смирнова",
+      firstName: "Мария",
+      middleName: "Алексеевна",
+      role: "education_staff",
+      groupId: 4,
+      groupIds: [4],
+      studentId: 10,
+      disciplineId: 5,
+      disciplineIds: [5],
     };
 
-    expect(getDataScope(student).groupScope).toBe(3);
+    expect(getDataScope(staff)).toEqual({
+      groupScope: null,
+      studentScope: null,
+      disciplineScope: null,
+    });
   });
 
-  it("студент ограничивается своей записью студента", () => {
-    const student: AuthUser = {
-      id: 2,
-      login: "ivanov",
-      role: "user",
-      groupId: 3,
-      studentId: 7,
+  it("teacher is limited by assigned disciplines", () => {
+    const teacher: AuthUser = {
+      id: 3,
+      login: "teacher",
+      lastName: "Кузнецов",
+      firstName: "Андрей",
+      middleName: "Викторович",
+      role: "teacher",
+      groupId: 4,
+      groupIds: [4, 6],
+      studentId: null,
+      disciplineId: 5,
+      disciplineIds: [5, 8],
     };
 
-    expect(getDataScope(student).studentScope).toBe(7);
+    expect(getDataScope(teacher).disciplineScope).toEqual([5, 8]);
   });
 
-  it("не подставляет чужую группу для администратора даже если groupId задан", () => {
+  it("teacher is limited by assigned groups", () => {
+    const teacher: AuthUser = {
+      id: 3,
+      login: "teacher",
+      lastName: "Кузнецов",
+      firstName: "Андрей",
+      middleName: "Викторович",
+      role: "teacher",
+      groupId: 4,
+      groupIds: [4, 6],
+      studentId: null,
+      disciplineId: 5,
+      disciplineIds: [5],
+    };
+
+    expect(getDataScope(teacher).groupScope).toEqual([4, 6]);
+  });
+
+  it("teacher without assigned scope does not get broad access", () => {
+    const teacher: AuthUser = {
+      id: 3,
+      login: "teacher",
+      lastName: "Кузнецов",
+      firstName: "Андрей",
+      middleName: "Викторович",
+      role: "teacher",
+      groupId: null,
+      groupIds: [],
+      studentId: null,
+      disciplineId: null,
+      disciplineIds: [],
+    };
+
+    expect(getDataScope(teacher)).toEqual({
+      groupScope: [-1],
+      studentScope: null,
+      disciplineScope: [-1],
+    });
+  });
+
+  it("does not apply user scope to admin even when ids are set", () => {
     const admin: AuthUser = {
       id: 1,
       login: "admin",
+      lastName: "Системный",
+      firstName: "Администратор",
+      middleName: "",
       role: "admin",
       groupId: 99,
+      groupIds: [99],
       studentId: 100,
+      disciplineId: 7,
+      disciplineIds: [7],
     };
 
-    expect(getDataScope(admin).groupScope).toBeNull();
-  });
-
-  it("корректно возвращает пустой studentScope для пользователя без связанной записи", () => {
-    const student: AuthUser = {
-      id: 3,
-      login: "new-student",
-      role: "user",
-      groupId: 4,
-      studentId: null,
-    };
-
-    expect(getDataScope(student)).toEqual({
-      groupScope: 4,
+    expect(getDataScope(admin)).toEqual({
+      groupScope: null,
       studentScope: null,
+      disciplineScope: null,
     });
   });
 });

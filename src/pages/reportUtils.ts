@@ -8,10 +8,28 @@ export type ReportRow = {
   debts: number;
 };
 
+export type ReportSummary = {
+  studentsCount: number;
+  disciplinesCount: number;
+  gradesCount: number;
+};
+
 export function filterStudentsByGroup(data: AppData, selectedGroupId: string) {
   return data.students.filter((student) => {
     return selectedGroupId === "all" || student.groupId === Number(selectedGroupId);
   });
+}
+
+export function buildReportSummary(data: AppData, students: Student[]): ReportSummary {
+  const studentIds = new Set(students.map((student) => student.id));
+  const records = data.performance.filter((record) => studentIds.has(record.studentId));
+  const disciplineIds = new Set(records.map((record) => record.disciplineId));
+
+  return {
+    studentsCount: students.length,
+    disciplinesCount: disciplineIds.size,
+    gradesCount: records.length,
+  };
 }
 
 export function buildReportRows(data: AppData, students: Student[]): ReportRow[] {

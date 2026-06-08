@@ -1,11 +1,17 @@
-export type Role = "admin" | "user";
+export type Role = "admin" | "education_staff" | "teacher";
 
 export type User = {
   id: number;
   login: string;
+  lastName: string;
+  firstName: string;
+  middleName: string;
   role: Role;
   groupId: number | null;
+  groupIds: number[];
   studentId: number | null;
+  disciplineId: number | null;
+  disciplineIds: number[];
 };
 
 export type AuthResponse = {

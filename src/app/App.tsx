@@ -8,6 +8,7 @@ import { PerfomanceJournalPage } from "../pages/PerfomanceJournalPage";
 import { ReportsPage } from "../pages/ReportsPage";
 import { StudentFormPage } from "../pages/StudentFormPage";
 import { StudentsPage } from "../pages/StudentsPage";
+import { UsersPage } from "../pages/UsersPage";
 import { emptyData, type AppData } from "../types/app";
 import type { User } from "../types/student";
 import type { Page } from "./router";
@@ -87,6 +88,9 @@ export default function App() {
 
   const currentUser = session.user;
   const isAdmin = currentUser.role === "admin";
+  const canEditStudents = currentUser.role === "admin" || currentUser.role === "education_staff";
+  const canManageAcademic = currentUser.role === "admin" || currentUser.role === "education_staff";
+  const canEditPerformance = canManageAcademic || currentUser.role === "teacher";
 
   function logout() {
     setData(emptyData);
@@ -106,11 +110,12 @@ export default function App() {
         <div className="card">Загрузка данных из PostgreSQL...</div>
       ) : (
         <>
-          {page === "students" && <StudentsPage data={data} setData={setData} isAdmin={isAdmin} />}
-          {page === "directories" && <DirectoriesPage data={data} setData={setData} isAdmin={isAdmin} />}
-          {page === "curriculum" && <CurriculumPage data={data} setData={setData} isAdmin={isAdmin} />}
-          {page === "performance" && <PerfomanceJournalPage data={data} setData={setData} isAdmin={isAdmin} />}
+          {page === "students" && <StudentsPage data={data} setData={setData} isAdmin={canEditStudents} />}
+          {page === "directories" && <DirectoriesPage data={data} setData={setData} isAdmin={canManageAcademic} />}
+          {page === "curriculum" && <CurriculumPage data={data} setData={setData} isAdmin={canManageAcademic} />}
+          {page === "performance" && <PerfomanceJournalPage data={data} setData={setData} isAdmin={canEditPerformance} />}
           {page === "reports" && <ReportsPage data={data} />}
+          {page === "users" && isAdmin && <UsersPage data={data} />}
         </>
       )}
     </Layout>

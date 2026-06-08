@@ -3,7 +3,7 @@ import { DataTable } from "../components/DataTable";
 import { Header } from "../components/Header";
 import { Select } from "../components/Select";
 import type { AppData } from "../types/app";
-import { buildReportRows, filterStudentsByGroup } from "./reportUtils";
+import { buildReportRows, buildReportSummary, filterStudentsByGroup } from "./reportUtils";
 
 type ReportsPageProps = {
   data: AppData;
@@ -21,6 +21,10 @@ export function ReportsPage({ data }: ReportsPageProps) {
     return buildReportRows(data, filteredStudents);
   }, [data, filteredStudents]);
 
+  const reportSummary = useMemo(() => {
+    return buildReportSummary(data, filteredStudents);
+  }, [data, filteredStudents]);
+
   return (
     <section>
       <Header title="Отчеты" text="Сводная информация по успеваемости студентов с фильтрацией по группам." />
@@ -33,9 +37,9 @@ export function ReportsPage({ data }: ReportsPageProps) {
       </div>
 
       <div className="stats">
-        <div className="stat-card"><span>Студентов</span><strong>{filteredStudents.length}</strong></div>
-        <div className="stat-card"><span>Дисциплин</span><strong>{data.disciplines.length}</strong></div>
-        <div className="stat-card"><span>Оценок</span><strong>{data.performance.length}</strong></div>
+        <div className="stat-card"><span>Студентов</span><strong>{reportSummary.studentsCount}</strong></div>
+        <div className="stat-card"><span>Дисциплин с оценками</span><strong>{reportSummary.disciplinesCount}</strong></div>
+        <div className="stat-card"><span>Оценок</span><strong>{reportSummary.gradesCount}</strong></div>
       </div>
 
       <DataTable empty={reportRows.length === 0} emptyText="Нет данных для отчета" colSpan={5}>

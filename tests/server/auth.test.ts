@@ -3,10 +3,16 @@ import { createAuthToken, verifyAuthToken, type AuthUser } from "../../server/au
 
 const user: AuthUser = {
   id: 10,
-  login: "student",
-  role: "user",
-  groupId: 2,
-  studentId: 15,
+  login: "teacher",
+  lastName: "Кузнецов",
+  firstName: "Андрей",
+  middleName: "Викторович",
+  role: "teacher",
+  groupId: 1,
+  groupIds: [1, 2],
+  studentId: null,
+  disciplineId: 2,
+  disciplineIds: [2, 3],
 };
 
 describe("Server / JWT авторизация", () => {
@@ -21,15 +27,21 @@ describe("Server / JWT авторизация", () => {
     const token = createAuthToken(user, "test-secret");
     const decoded = verifyAuthToken(token, "test-secret");
 
-    expect(decoded.role).toBe("user");
+    expect(decoded.role).toBe("teacher");
   });
 
-  it("сохраняет привязку к группе и студенту в JWT", () => {
+  it("сохраняет привязку преподавателя к дисциплинам в JWT", () => {
     const token = createAuthToken(user, "test-secret");
     const decoded = verifyAuthToken(token, "test-secret");
 
-    expect(decoded.groupId).toBe(2);
-    expect(decoded.studentId).toBe(15);
+    expect(decoded.disciplineIds).toEqual([2, 3]);
+  });
+
+  it("сохраняет привязку преподавателя к группам в JWT", () => {
+    const token = createAuthToken(user, "test-secret");
+    const decoded = verifyAuthToken(token, "test-secret");
+
+    expect(decoded.groupIds).toEqual([1, 2]);
   });
 
   it("не принимает токен, подписанный другим секретом", () => {
