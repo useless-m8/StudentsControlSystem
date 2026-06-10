@@ -1,0 +1,1086 @@
+openapi: 3.0.3
+info:
+  title: Student Performance System API
+  version: 1.0.0
+  description: >
+    Swagger/OpenAPI документация REST API системы учета студентов, учебного
+    плана, пользователей и журнала успеваемости.
+servers:
+  - url: http://localhost:4000/api
+    description: Локальный сервер разработки
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+    description: Проверка доступности API
+  - name: Auth
+    description: Авторизация и регистрация
+  - name: AppData
+    description: Получение данных для интерфейса
+  - name: Users
+    description: Управление учетными записями и ролями
+  - name: Directories
+    description: Управление формами обучения, специальностями и дисциплинами
+  - name: Groups
+    description: Управление учебными группами
+  - name: Students
+    description: Управление студентами
+  - name: Curriculum
+    description: Управление учебным планом
+  - name: Performance
+    description: Ведение журнала успеваемости
+  - name: Reports
+    description: Отчеты и сводная статистика
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Проверить состояние API
+      security: []
+      responses:
+        "200":
+          description: API работает
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Авторизовать пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Пользователь успешно авторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/register-options:
+    get:
+      tags:
+        - Auth
+      summary: Получить варианты для формы регистрации студента
+      responses:
+        "200":
+          description: Список групп и форм обучения
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterOptions"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Зарегистрировать студента и создать учетную запись
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterStudentRequest"
+      responses:
+        "201":
+          description: Студент зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /app-data:
+    get:
+      tags:
+        - AppData
+      summary: Получить все данные для интерфейса
+      description: >
+        Набор данных фильтруется по роли пользователя. Преподаватель получает
+        только назначенные ему группы и дисциплины.
+      responses:
+        "200":
+          description: Данные приложения
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppData"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Получить список пользователей
+      responses:
+        "200":
+          description: Список пользователей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      tags:
+        - Users
+      summary: Создать пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/UserPayload"
+                - type: object
+                  required:
+                    - login
+                    - password
+                    - role
+      responses:
+        "201":
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /users/{id}:
+    put:
+      tags:
+        - Users
+      summary: Обновить пользователя
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPayload"
+      responses:
+        "200":
+          description: Пользователь обновлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Users
+      summary: Удалить пользователя
+      description: Администратор не может удалить собственную учетную запись.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Пользователь удален
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /directories/{kind}:
+    post:
+      tags:
+        - Directories
+      summary: Создать запись справочного раздела
+      parameters:
+        - $ref: "#/components/parameters/DirectoryKind"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamedItemPayload"
+      responses:
+        "201":
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /directories/{kind}/{id}:
+    put:
+      tags:
+        - Directories
+      summary: Обновить запись справочного раздела
+      parameters:
+        - $ref: "#/components/parameters/DirectoryKind"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamedItemPayload"
+      responses:
+        "200":
+          description: Запись обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Directories
+      summary: Удалить запись справочного раздела
+      parameters:
+        - $ref: "#/components/parameters/DirectoryKind"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Запись удалена
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /groups:
+    post:
+      tags:
+        - Groups
+      summary: Создать учебную группу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentGroupPayload"
+      responses:
+        "201":
+          description: Группа создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentGroup"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /groups/{id}:
+    put:
+      tags:
+        - Groups
+      summary: Обновить учебную группу
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentGroupPayload"
+      responses:
+        "200":
+          description: Группа обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentGroup"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Groups
+      summary: Удалить учебную группу
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Группа удалена
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /students:
+    post:
+      tags:
+        - Students
+      summary: Создать студента
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentPayload"
+      responses:
+        "201":
+          description: Студент создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /students/{id}:
+    put:
+      tags:
+        - Students
+      summary: Обновить студента
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentPayload"
+      responses:
+        "200":
+          description: Студент обновлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Students
+      summary: Удалить студента
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Студент удален
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /curriculum:
+    post:
+      tags:
+        - Curriculum
+      summary: Создать запись учебного плана
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CurriculumPayload"
+      responses:
+        "201":
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Curriculum"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /curriculum/{id}:
+    put:
+      tags:
+        - Curriculum
+      summary: Обновить запись учебного плана
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CurriculumPayload"
+      responses:
+        "200":
+          description: Запись обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Curriculum"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Curriculum
+      summary: Удалить запись учебного плана
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Запись удалена
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /performance:
+    post:
+      tags:
+        - Performance
+      summary: Добавить оценку в журнал успеваемости
+      description: Преподаватель может добавлять оценки только по назначенным группам и дисциплинам.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PerformanceRecordPayload"
+      responses:
+        "201":
+          description: Оценка добавлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /performance/{id}:
+    put:
+      tags:
+        - Performance
+      summary: Обновить оценку в журнале
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PerformanceRecordPayload"
+      responses:
+        "200":
+          description: Оценка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Performance
+      summary: Удалить оценку из журнала
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Оценка удалена
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reports/summary:
+    get:
+      tags:
+        - Reports
+      summary: Получить сводную статистику
+      parameters:
+        - name: groupId
+          in: query
+          required: false
+          description: Идентификатор группы для фильтрации отчета
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Сводные показатели
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Идентификатор записи
+    DirectoryKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - educationForms
+          - specialities
+          - disciplines
+      description: Тип раздела
+
+  responses:
+    BadRequest:
+      description: Некорректные данные запроса
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Требуется авторизация
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Недостаточно прав для операции
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Запись не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Операция конфликтует с существующими данными
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: Некорректные данные запроса
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Role:
+      type: string
+      enum:
+        - admin
+        - education_staff
+        - teacher
+
+    LoginRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          example: admin
+        password:
+          type: string
+          format: password
+          example: admin
+
+    AuthResponse:
+      type: object
+      required:
+        - user
+        - token
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+          description: JWT токен для заголовка Authorization
+
+    User:
+      type: object
+      required:
+        - id
+        - login
+        - role
+        - groupIds
+        - disciplineIds
+      properties:
+        id:
+          type: integer
+          example: 1
+        login:
+          type: string
+          example: teacher
+        lastName:
+          type: string
+          example: Иванов
+        firstName:
+          type: string
+          example: Иван
+        middleName:
+          type: string
+          example: Иванович
+        role:
+          $ref: "#/components/schemas/Role"
+        groupId:
+          type: integer
+          nullable: true
+          example: 1
+        groupIds:
+          type: array
+          items:
+            type: integer
+          example:
+            - 1
+            - 2
+        studentId:
+          type: integer
+          nullable: true
+          example: null
+        disciplineId:
+          type: integer
+          nullable: true
+          example: 1
+        disciplineIds:
+          type: array
+          items:
+            type: integer
+          example:
+            - 1
+            - 3
+
+    UserPayload:
+      type: object
+      required:
+        - login
+        - role
+      properties:
+        login:
+          type: string
+          example: teacher
+        password:
+          type: string
+          format: password
+          description: При обновлении можно не передавать, если пароль не меняется
+          example: teacher123
+        lastName:
+          type: string
+          example: Иванов
+        firstName:
+          type: string
+          example: Иван
+        middleName:
+          type: string
+          example: Иванович
+        role:
+          $ref: "#/components/schemas/Role"
+        groupId:
+          type: integer
+          nullable: true
+          example: 1
+        groupIds:
+          type: array
+          items:
+            type: integer
+          example:
+            - 1
+            - 2
+        disciplineId:
+          type: integer
+          nullable: true
+          example: 1
+        disciplineIds:
+          type: array
+          items:
+            type: integer
+          example:
+            - 1
+            - 3
+
+    RegisterStudentRequest:
+      type: object
+      required:
+        - login
+        - password
+        - lastName
+        - firstName
+        - admissionYear
+        - educationFormId
+        - groupId
+      properties:
+        login:
+          type: string
+          example: student01
+        password:
+          type: string
+          format: password
+          example: pass1234
+        lastName:
+          type: string
+          example: Петров
+        firstName:
+          type: string
+          example: Петр
+        middleName:
+          type: string
+          example: Петрович
+        admissionYear:
+          type: integer
+          example: 2024
+        educationFormId:
+          type: integer
+          example: 1
+        groupId:
+          type: integer
+          example: 1
+
+    NamedItem:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Информационные системы и программирование
+
+    NamedItemPayload:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: Дневная
+
+    StudentGroup:
+      type: object
+      required:
+        - id
+        - name
+        - specialityId
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: ИСП-21
+        specialityId:
+          type: integer
+          example: 1
+
+    StudentGroupPayload:
+      type: object
+      required:
+        - name
+        - specialityId
+      properties:
+        name:
+          type: string
+          example: ИСП-21
+        specialityId:
+          type: integer
+          example: 1
+
+    Student:
+      type: object
+      required:
+        - id
+        - lastName
+        - firstName
+        - admissionYear
+        - educationFormId
+        - groupId
+      properties:
+        id:
+          type: integer
+          example: 1
+        lastName:
+          type: string
+          example: Сидоров
+        firstName:
+          type: string
+          example: Алексей
+        middleName:
+          type: string
+          example: Сергеевич
+        admissionYear:
+          type: integer
+          example: 2024
+        educationFormId:
+          type: integer
+          example: 1
+        groupId:
+          type: integer
+          example: 1
+
+    StudentPayload:
+      type: object
+      required:
+        - lastName
+        - firstName
+        - admissionYear
+        - educationFormId
+        - groupId
+      properties:
+        lastName:
+          type: string
+          example: Сидоров
+        firstName:
+          type: string
+          example: Алексей
+        middleName:
+          type: string
+          example: Сергеевич
+        admissionYear:
+          type: integer
+          example: 2024
+        educationFormId:
+          type: integer
+          example: 1
+        groupId:
+          type: integer
+          example: 1
+
+    Curriculum:
+      type: object
+      required:
+        - id
+        - specialityId
+        - disciplineId
+        - semester
+        - reportType
+      properties:
+        id:
+          type: integer
+          example: 1
+        specialityId:
+          type: integer
+          example: 1
+        disciplineId:
+          type: integer
+          example: 1
+        semester:
+          type: integer
+          example: 3
+        reportType:
+          type: string
+          enum:
+            - экзамен
+            - зачет
+          example: экзамен
+
+    CurriculumPayload:
+      type: object
+      required:
+        - specialityId
+        - disciplineId
+        - semester
+        - reportType
+      properties:
+        specialityId:
+          type: integer
+          example: 1
+        disciplineId:
+          type: integer
+          example: 1
+        semester:
+          type: integer
+          example: 3
+        reportType:
+          type: string
+          enum:
+            - экзамен
+            - зачет
+          example: экзамен
+
+    PerformanceRecord:
+      type: object
+      required:
+        - id
+        - studentId
+        - disciplineId
+        - studyYear
+        - semester
+        - grade
+      properties:
+        id:
+          type: integer
+          example: 1
+        studentId:
+          type: integer
+          example: 1
+        disciplineId:
+          type: integer
+          example: 1
+        studyYear:
+          type: integer
+          example: 2025
+        semester:
+          type: integer
+          example: 3
+        grade:
+          type: string
+          enum:
+            - "2"
+            - "3"
+            - "4"
+            - "5"
+            - зачтено
+            - не зачтено
+          example: "5"
+
+    PerformanceRecordPayload:
+      type: object
+      required:
+        - studentId
+        - disciplineId
+        - studyYear
+        - semester
+        - grade
+      properties:
+        studentId:
+          type: integer
+          example: 1
+        disciplineId:
+          type: integer
+          example: 1
+        studyYear:
+          type: integer
+          example: 2025
+        semester:
+          type: integer
+          example: 3
+        grade:
+          type: string
+          example: "5"
+
+    AppData:
+      type: object
+      required:
+        - educationForms
+        - specialities
+        - disciplines
+        - groups
+        - students
+        - curriculum
+        - performance
+      properties:
+        educationForms:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedItem"
+        specialities:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedItem"
+        disciplines:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedItem"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentGroup"
+        students:
+          type: array
+          items:
+            $ref: "#/components/schemas/Student"
+        curriculum:
+          type: array
+          items:
+            $ref: "#/components/schemas/Curriculum"
+        performance:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerformanceRecord"
+
+    RegisterOptions:
+      type: object
+      required:
+        - groups
+        - educationForms
+      properties:
+        groups:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/StudentGroup"
+              - type: object
+                properties:
+                  specialityName:
+                    type: string
+                    example: Информационные системы и программирование
+        educationForms:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedItem"
+
+    ReportSummary:
+      type: object
+      required:
+        - studentsCount
+        - disciplinesCount
+        - gradesCount
+      properties:
+        studentsCount:
+          type: integer
+          example: 25
+        disciplinesCount:
+          type: integer
+          example: 8
+        gradesCount:
+          type: integer
+          example: 120

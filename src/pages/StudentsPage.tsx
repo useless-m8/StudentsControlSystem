@@ -28,12 +28,20 @@ export function StudentsPage({ data, setData, isAdmin }: StudentsPageProps) {
   const [form, setForm] = useState<Student>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [specialityFilter, setSpecialityFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
 
+  const filteredGroups = specialityFilter === "all"
+    ? data.groups
+    : data.groups.filter((group) => group.specialityId === Number(specialityFilter));
+
   const filteredStudents = data.students.filter((student) => {
+    const group = data.groups.find((item) => item.id === student.groupId);
     const fullName = `${student.lastName} ${student.firstName} ${student.middleName}`.toLowerCase();
+
     return (
       fullName.includes(search.toLowerCase()) &&
+      (specialityFilter === "all" || group?.specialityId === Number(specialityFilter)) &&
       (groupFilter === "all" || student.groupId === Number(groupFilter))
     );
   });
@@ -41,6 +49,20 @@ export function StudentsPage({ data, setData, isAdmin }: StudentsPageProps) {
   function resetForm() {
     setForm(emptyForm);
     setEditingId(null);
+  }
+
+  function handleSpecialityFilterChange(value: string) {
+    setSpecialityFilter(value);
+    if (value !== "all") {
+      const groupStillAvailable = data.groups.some((group) => (
+        group.id === Number(groupFilter) &&
+        group.specialityId === Number(value)
+      ));
+
+      if (!groupStillAvailable) {
+        setGroupFilter("all");
+      }
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -87,16 +109,37 @@ export function StudentsPage({ data, setData, isAdmin }: StudentsPageProps) {
 
       {isAdmin && (
         <form className="card form-grid" onSubmit={handleSubmit}>
-          <Input placeholder="Фамилия" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
-          <Input placeholder="Имя" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
-          <Input placeholder="Отчество" value={form.middleName} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
-          <Input type="number" placeholder="Год поступления" value={form.admissionYear} onChange={(event) => setForm({ ...form, admissionYear: Number(event.target.value) })} />
-          <Select value={form.educationFormId} onChange={(event) => setForm({ ...form, educationFormId: Number(event.target.value) })}>
-            {data.educationForms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </Select>
-          <Select value={form.groupId} onChange={(event) => setForm({ ...form, groupId: Number(event.target.value) })}>
-            {data.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-          </Select>
+          <label className="field-stack">
+            <span>Фамилия</span>
+            <Input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+          </label>
+          <label className="field-stack">
+            <span>Имя</span>
+            <Input value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+          </label>
+          <label className="field-stack">
+            <span>Отчество</span>
+            <Input value={form.middleName} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
+          </label>
+          <label className="field-stack">
+            <span>Год поступления</span>
+            <Input type="number" value={form.admissionYear} onChange={(event) => setForm({ ...form, admissionYear: Number(event.target.value) })} />
+          </label>
+          <label className="field-stack">
+            <span>Форма обучения</span>
+            <Select value={form.educationFormId} onChange={(event) => setForm({ ...form, educationFormId: Number(event.target.value) })}>
+              {data.educationForms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+          </label>
+          <label className="field-stack">
+            <span>Группа</span>
+            <Select value={form.groupId} onChange={(event) => setForm({ ...form, groupId: Number(event.target.value) })}>
+              {data.groups.map((group) => {
+                const speciality = data.specialities.find((item) => item.id === group.specialityId);
+                return <option key={group.id} value={group.id}>{group.name} — {speciality?.name}</option>;
+              })}
+            </Select>
+          </label>
           <div className="form-actions">
             <Button type="submit">{editingId ? "Сохранить" : "Добавить студента"}</Button>
             {editingId && <Button type="button" variant="secondary" onClick={resetForm}>Отмена</Button>}
@@ -104,22 +147,29 @@ export function StudentsPage({ data, setData, isAdmin }: StudentsPageProps) {
         </form>
       )}
 
-      {!isAdmin && <div className="notice">У вас роль пользователя. Доступен только просмотр данных.</div>}
+      {!isAdmin && <div className="notice">Доступен только просмотр данных.</div>}
 
       <div className="filters">
         <Input placeholder="Поиск по ФИО" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <Select value={specialityFilter} onChange={(event) => handleSpecialityFilterChange(event.target.value)}>
+          <option value="all">Все специальности</option>
+          {data.specialities.map((speciality) => (
+            <option key={speciality.id} value={speciality.id}>{speciality.name}</option>
+          ))}
+        </Select>
         <Select value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)}>
           <option value="all">Все группы</option>
-          {data.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          {filteredGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
         </Select>
       </div>
 
-      <DataTable empty={filteredStudents.length === 0} emptyText="Студенты не найдены" colSpan={isAdmin ? 5 : 4}>
+      <DataTable empty={filteredStudents.length === 0} emptyText="Студенты не найдены" colSpan={isAdmin ? 6 : 5}>
         <thead>
           <tr>
             <th>ФИО</th>
             <th>Год поступления</th>
             <th>Форма обучения</th>
+            <th>Специальность</th>
             <th>Группа</th>
             {isAdmin && <th>Действия</th>}
           </tr>
@@ -127,12 +177,14 @@ export function StudentsPage({ data, setData, isAdmin }: StudentsPageProps) {
         <tbody>
           {filteredStudents.map((student) => {
             const group = data.groups.find((item) => item.id === student.groupId);
+            const speciality = data.specialities.find((item) => item.id === group?.specialityId);
             const educationForm = data.educationForms.find((item) => item.id === student.educationFormId);
             return (
               <tr key={student.id}>
                 <td>{student.lastName} {student.firstName} {student.middleName}</td>
                 <td>{student.admissionYear}</td>
                 <td>{educationForm?.name}</td>
+                <td>{speciality?.name || "-"}</td>
                 <td>{group?.name}</td>
                 {isAdmin && (
                   <td className="actions">

@@ -3,6 +3,5 @@ export type Curriculum = {
   specialityId: number;
   disciplineId: number;
   semester: number;
-  hours: number;
   reportType: string;
 };

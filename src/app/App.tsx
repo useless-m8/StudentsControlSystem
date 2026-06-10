@@ -87,10 +87,10 @@ export default function App() {
   }
 
   const currentUser = session.user;
-  const isAdmin = currentUser.role === "admin";
   const canEditStudents = currentUser.role === "admin" || currentUser.role === "education_staff";
   const canManageAcademic = currentUser.role === "admin" || currentUser.role === "education_staff";
   const canEditPerformance = canManageAcademic || currentUser.role === "teacher";
+  const canManageUsers = currentUser.role === "admin" || currentUser.role === "education_staff";
 
   function logout() {
     setData(emptyData);
@@ -115,7 +115,7 @@ export default function App() {
           {page === "curriculum" && <CurriculumPage data={data} setData={setData} isAdmin={canManageAcademic} />}
           {page === "performance" && <PerfomanceJournalPage data={data} setData={setData} isAdmin={canEditPerformance} />}
           {page === "reports" && <ReportsPage data={data} />}
-          {page === "users" && isAdmin && <UsersPage data={data} />}
+          {page === "users" && canManageUsers && <UsersPage data={data} currentUser={currentUser} />}
         </>
       )}
     </Layout>

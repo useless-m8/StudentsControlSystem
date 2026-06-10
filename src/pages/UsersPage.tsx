@@ -11,6 +11,7 @@ import type { Role, User } from "../types/student";
 
 type UsersPageProps = {
   data: AppData;
+  currentUser: User;
 };
 
 type MultiSelectItem = {
@@ -91,9 +92,11 @@ function MultiSelectDropdown({ label, placeholder, items, selectedIds, disabled,
   );
 }
 
-export function UsersPage({ data }: UsersPageProps) {
+export function UsersPage({ data, currentUser }: UsersPageProps) {
+  const defaultForm = currentUser.role === "education_staff" ? { ...emptyForm, role: "teacher" as Role } : emptyForm;
+  const isEducationStaff = currentUser.role === "education_staff";
   const [users, setUsers] = useState<User[]>([]);
-  const [form, setForm] = useState<UserPayload>(emptyForm);
+  const [form, setForm] = useState<UserPayload>(defaultForm);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -104,22 +107,32 @@ export function UsersPage({ data }: UsersPageProps) {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (isEducationStaff && !editingId) return;
+
+    const payload = isEducationStaff ? { ...form, role: "teacher" as Role } : form;
 
     try {
       if (editingId) {
-        const saved = await updateUser(editingId, form);
+        const saved = await updateUser(editingId, payload);
         setUsers((prev) => prev.map((user) => (user.id === editingId ? saved : user)));
       } else {
-        const saved = await createUser(form);
+        const saved = await createUser(payload);
         setUsers((prev) => [...prev, saved]);
       }
 
-      setForm(emptyForm);
+      setForm(defaultForm);
       setEditingId(null);
     } catch (error) {
       alert(getErrorMessage(error));
     }
   }
+
+  const visibleUsers = isEducationStaff ? users.filter((user) => user.role === "teacher") : users;
+  const selectedTeacher = editingId ? users.find((user) => user.id === editingId) : null;
+  const selectedTeacherName = selectedTeacher
+    ? [selectedTeacher.lastName, selectedTeacher.firstName, selectedTeacher.middleName].filter(Boolean).join(" ") || "Преподаватель"
+    : "";
+  const colSpan = isEducationStaff ? 4 : 6;
 
   async function handleDelete(id: number) {
     if (!confirm("Удалить пользователя?")) return;
@@ -136,35 +149,47 @@ export function UsersPage({ data }: UsersPageProps) {
     <section>
       <Header title="Пользователи" text="Настройка учетных записей и ролей доступа." />
 
+      {isEducationStaff && !editingId ? (
+        <div className="notice">Выберите преподавателя в таблице, чтобы назначить ему группы и дисциплины.</div>
+      ) : (
       <form className="card form-grid" onSubmit={handleSubmit}>
-        <Input placeholder="Логин" value={form.login} onChange={(event) => setForm({ ...form, login: event.target.value })} />
-        <Input placeholder="Фамилия" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
-        <Input placeholder="Имя" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
-        <Input placeholder="Отчество" value={form.middleName} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
-        <Input
-          type="password"
-          placeholder={editingId ? "Новый пароль, если нужно" : "Пароль"}
-          value={form.password || ""}
-          onChange={(event) => setForm({ ...form, password: event.target.value })}
-        />
-        <Select
-          value={form.role}
-          onChange={(event) => {
-            const role = event.target.value as Role;
-            setForm({
-              ...form,
-              role,
-              groupId: role === "teacher" ? form.groupId : null,
-              groupIds: role === "teacher" ? form.groupIds : [],
-              disciplineId: role === "teacher" ? form.disciplineId : null,
-              disciplineIds: role === "teacher" ? form.disciplineIds : [],
-            });
-          }}
-        >
-          <option value="education_staff">Сотрудник учебного отдела</option>
-          <option value="teacher">Преподаватель</option>
-          <option value="admin">Администратор</option>
-        </Select>
+        {isEducationStaff ? (
+          <div className="field-stack">
+            <span>Преподаватель</span>
+            <strong>{selectedTeacherName}</strong>
+          </div>
+        ) : (
+          <>
+            <Input placeholder="Логин" value={form.login} onChange={(event) => setForm({ ...form, login: event.target.value })} />
+            <Input placeholder="Фамилия" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+            <Input placeholder="Имя" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+            <Input placeholder="Отчество" value={form.middleName} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
+            <Input
+              type="password"
+              placeholder={editingId ? "Новый пароль, если нужно" : "Пароль"}
+              value={form.password || ""}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+            />
+            <Select
+              value={form.role}
+              onChange={(event) => {
+                const role = event.target.value as Role;
+                setForm({
+                  ...form,
+                  role,
+                  groupId: role === "teacher" ? form.groupId : null,
+                  groupIds: role === "teacher" ? form.groupIds : [],
+                  disciplineId: role === "teacher" ? form.disciplineId : null,
+                  disciplineIds: role === "teacher" ? form.disciplineIds : [],
+                });
+              }}
+            >
+              <option value="education_staff">Сотрудник учебного отдела</option>
+              <option value="teacher">Преподаватель</option>
+              <option value="admin">Администратор</option>
+            </Select>
+          </>
+        )}
         <MultiSelectDropdown
           label="Группы преподавателя"
           placeholder="Выберите группы"
@@ -181,36 +206,44 @@ export function UsersPage({ data }: UsersPageProps) {
           disabled={form.role !== "teacher"}
           onChange={(disciplineIds) => setForm({ ...form, disciplineIds, disciplineId: disciplineIds[0] || null })}
         />
-        <Button type="submit">{editingId ? "Сохранить" : "Создать пользователя"}</Button>
-        {editingId && <Button type="button" variant="secondary" onClick={() => setEditingId(null)}>Отмена</Button>}
+        <Button type="submit">{isEducationStaff ? "Сохранить назначения" : (editingId ? "Сохранить" : "Создать пользователя")}</Button>
+        {editingId && <Button type="button" variant="secondary" onClick={() => {
+          setForm(defaultForm);
+          setEditingId(null);
+        }}>Отмена</Button>}
       </form>
+      )}
 
-      <DataTable empty={users.length === 0} emptyText="Пользователей нет" colSpan={6}>
+      <DataTable empty={visibleUsers.length === 0} emptyText="Пользователей нет" colSpan={colSpan}>
         <thead>
           <tr>
-            <th>Логин</th>
+            {!isEducationStaff && <th>Логин</th>}
             <th>ФИО</th>
-            <th>Роль</th>
+            {!isEducationStaff && <th>Роль</th>}
             <th>Группы</th>
             <th>Дисциплины</th>
             <th>Действия</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => {
+          {visibleUsers.map((user) => {
             const groupIds = user.groupIds.length > 0 ? user.groupIds : (user.groupId ? [user.groupId] : []);
             const disciplineIds = user.disciplineIds.length > 0 ? user.disciplineIds : (user.disciplineId ? [user.disciplineId] : []);
             const groups = data.groups.filter((item) => groupIds.includes(item.id));
             const disciplines = data.disciplines.filter((item) => disciplineIds.includes(item.id));
+            const isCurrentUser = user.id === currentUser.id;
+            const canEditUser = currentUser.role === "admin" || user.role === "teacher";
+            const canDeleteUser = currentUser.role === "admin" && !isCurrentUser;
             return (
               <tr key={user.id}>
-                <td>{user.login}</td>
+                {!isEducationStaff && <td>{user.login}</td>}
                 <td>{[user.lastName, user.firstName, user.middleName].filter(Boolean).join(" ") || "-"}</td>
-                <td>{roleLabels[user.role]}</td>
+                {!isEducationStaff && <td>{roleLabels[user.role]}</td>}
                 <td>{groups.map((group) => group.name).join(", ") || "-"}</td>
                 <td>{disciplines.map((discipline) => discipline.name).join(", ") || "-"}</td>
                 <td className="actions">
-                  <Button onClick={() => {
+                  <Button disabled={!canEditUser} onClick={() => {
+                    if (!canEditUser) return;
                     setForm({
                       login: user.login,
                       lastName: user.lastName,
@@ -225,7 +258,15 @@ export function UsersPage({ data }: UsersPageProps) {
                     });
                     setEditingId(user.id);
                   }}>Изменить</Button>
-                  <Button variant="danger" onClick={() => void handleDelete(user.id)}>Удалить</Button>
+                  {!isEducationStaff && (
+                    isCurrentUser && currentUser.role === "admin" ? (
+                      <Button type="button" variant="secondary" disabled>Текущий пользователь</Button>
+                    ) : canDeleteUser ? (
+                      <Button variant="danger" onClick={() => void handleDelete(user.id)}>Удалить</Button>
+                    ) : (
+                      <Button type="button" variant="secondary" disabled>Удаление недоступно</Button>
+                    )
+                  )}
                 </td>
               </tr>
             );

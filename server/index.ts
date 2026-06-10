@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
+import { fileURLToPath } from "node:url";
 import { createAuthToken, type AuthUser, verifyAuthToken } from "./auth.js";
 import { getDataScope } from "./accessScope.js";
 import { query } from "./db.js";
@@ -23,9 +24,45 @@ type TableName =
 const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "students-course-secret";
 const app = express();
+const openApiPath = fileURLToPath(new URL("../docs/openapi.yaml", import.meta.url));
+const swaggerHtml = `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Student Performance System API</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #ffffff; }
+      .swagger-ui .topbar { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.addEventListener("load", () => {
+        window.ui = SwaggerUIBundle({
+          url: "/docs/openapi.yaml",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          persistAuthorization: true
+        });
+      });
+    </script>
+  </body>
+</html>`;
 
 app.use(cors());
 app.use(express.json());
+
+app.get(["/docs", "/docs/"], (_request, response) => {
+  response.type("html").send(swaggerHtml);
+});
+
+app.get("/docs/openapi.yaml", (_request, response) => {
+  response.type("text/yaml; charset=utf-8").sendFile(openApiPath);
+});
 
 function asyncHandler(
   handler: (request: AuthRequest, response: Response) => Promise<void>
@@ -136,6 +173,41 @@ async function saveTeacherScopes(userId: number, role: AuthUser["role"], groupId
       [userId, disciplineIds]
     );
   }
+}
+
+function allowedGradesForReportType(reportType: string) {
+  return reportType === "Зачет" ? ["Зачет", "Незачет"] : ["5", "4", "3", "2"];
+}
+
+async function ensureGradeMatchesCurriculum(
+  response: Response,
+  studentId: number,
+  disciplineId: number,
+  semester: number,
+  grade: string
+) {
+  const result = await query<{ reportType: string }>(
+    `SELECT c.report_type AS "reportType"
+     FROM students st
+     JOIN student_groups g ON g.id = st.group_id
+     JOIN curriculum c ON c.speciality_id = g.speciality_id
+     WHERE st.id = $1 AND c.discipline_id = $2 AND c.semester = $3`,
+    [studentId, disciplineId, semester]
+  );
+
+  if (result.rowCount === 0) {
+    badRequest(response, "Для выбранного студента, дисциплины и семестра не найдена запись учебного плана");
+    return false;
+  }
+
+  const reportType = result.rows[0].reportType;
+  const allowedGrades = allowedGradesForReportType(reportType);
+  if (!allowedGrades.includes(grade)) {
+    badRequest(response, `Для формы отчетности "${reportType}" доступны оценки: ${allowedGrades.join(", ")}`);
+    return false;
+  }
+
+  return true;
 }
 
 async function ensureTeacherCanWritePerformance(
@@ -291,6 +363,7 @@ function canModify(request: AuthRequest, response: Response, next: NextFunction)
     (role === "education_staff" && path.startsWith("/api/students") && ["POST", "PUT"].includes(method)) ||
     (role === "education_staff" && academicPath && ["POST", "PUT", "DELETE"].includes(method)) ||
     (role === "education_staff" && path.startsWith("/api/performance") && ["POST", "PUT", "DELETE"].includes(method)) ||
+    (role === "education_staff" && path.startsWith("/api/users") && ["POST", "PUT"].includes(method)) ||
     (role === "teacher" && path.startsWith("/api/performance") && ["POST", "PUT", "DELETE"].includes(method));
 
   if (!allowed) {
@@ -569,7 +642,7 @@ app.get(
       ),
       query(
         `SELECT c.id, c.speciality_id AS "specialityId", c.discipline_id AS "disciplineId",
-          c.semester, c.hours, c.report_type AS "reportType"
+          c.semester, c.report_type AS "reportType"
          FROM curriculum c
          WHERE ($1::int[] IS NULL OR c.speciality_id IN (
            SELECT speciality_id FROM student_groups WHERE id = ANY($1::int[])
@@ -605,7 +678,12 @@ app.get(
 
 app.get(
   "/api/users",
-  asyncHandler(async (_request, response) => {
+  asyncHandler(async (request, response) => {
+    if (request.user?.role !== "admin" && request.user?.role !== "education_staff") {
+      response.status(403).json({ message: "Недостаточно прав доступа" });
+      return;
+    }
+
     const result = await query<AuthUser>(
       `SELECT u.id, u.login,
         u.last_name AS "lastName", u.first_name AS "firstName", u.middle_name AS "middleName",
@@ -621,7 +699,9 @@ app.get(
           CASE WHEN u.discipline_id IS NULL THEN ARRAY[]::int[] ELSE ARRAY[u.discipline_id] END
         ) AS "disciplineIds"
        FROM users u
-       ORDER BY u.id`
+       WHERE ($1::text = 'admin' OR u.role = 'teacher')
+       ORDER BY u.id`,
+      [request.user.role]
     );
 
     response.json(result.rows);
@@ -631,6 +711,11 @@ app.get(
 app.post(
   "/api/users",
   asyncHandler(async (request, response) => {
+    if (request.user?.role === "education_staff") {
+      response.status(403).json({ message: "Сотрудник учебного отдела может назначать группы и дисциплины только существующим преподавателям" });
+      return;
+    }
+
     const body = request.body as Record<string, unknown>;
     if (!requireFields(body, response, ["login", "password", "role"])) return;
 
@@ -679,6 +764,43 @@ app.put(
   "/api/users/:id",
   asyncHandler(async (request, response) => {
     const body = request.body as Record<string, unknown>;
+    if (request.user?.role === "education_staff") {
+      const teacherId = Number(routeParam(request.params.id));
+      const scopeValues = getRoleScopeValues("teacher", body, response);
+      if (!scopeValues) return;
+
+      const existingUser = await query<{ role: AuthUser["role"] }>("SELECT role FROM users WHERE id = $1", [teacherId]);
+      if (existingUser.rowCount === 0) {
+        response.status(404).json({ message: "Пользователь не найден" });
+        return;
+      }
+      if (existingUser.rows[0].role !== "teacher") {
+        response.status(403).json({ message: "Сотрудник учебного отдела может изменять назначения только преподавателей" });
+        return;
+      }
+
+      const result = await query<AuthUser>(
+        `UPDATE users
+         SET group_id = $1,
+           discipline_id = $2
+         WHERE id = $3
+         RETURNING id, login,
+          last_name AS "lastName", first_name AS "firstName", middle_name AS "middleName",
+          role, group_id AS "groupId",
+          student_id AS "studentId", discipline_id AS "disciplineId"`,
+        [scopeValues.groupId, scopeValues.disciplineId, teacherId]
+      );
+
+      await saveTeacherScopes(teacherId, "teacher", scopeValues.groupIds, scopeValues.disciplineIds);
+
+      response.json({
+        ...result.rows[0],
+        groupIds: scopeValues.groupIds,
+        disciplineIds: scopeValues.disciplineIds,
+      });
+      return;
+    }
+
     if (!requireFields(body, response, ["login", "role"])) return;
 
     const role = String(body.role) as AuthUser["role"];
@@ -686,6 +808,7 @@ app.put(
       badRequest(response, "Некорректная роль пользователя");
       return;
     }
+    const userId = Number(routeParam(request.params.id));
 
     const scopeValues = getRoleScopeValues(role, body, response);
     if (!scopeValues) return;
@@ -718,7 +841,7 @@ app.put(
         scopeValues.groupId,
         scopeValues.disciplineId,
         passwordHash,
-        Number(routeParam(request.params.id)),
+        userId,
       ]
     );
 
@@ -740,7 +863,13 @@ app.put(
 app.delete(
   "/api/users/:id",
   asyncHandler(async (request, response) => {
-    await removeById("users", routeParam(request.params.id), response);
+    const userId = Number(routeParam(request.params.id));
+    if (request.user?.id === userId) {
+      response.status(403).json({ message: "Нельзя удалить собственную учетную запись" });
+      return;
+    }
+
+    await removeById("users", String(userId), response);
   })
 );
 
@@ -960,18 +1089,18 @@ app.post(
   "/api/curriculum",
   asyncHandler(async (request, response) => {
     const body = request.body as Record<string, unknown>;
-    if (!requireFields(body, response, ["specialityId", "disciplineId", "semester", "hours", "reportType"])) return;
+    if (!requireFields(body, response, ["specialityId", "disciplineId", "semester", "reportType"])) return;
 
     const result = await query(
       `INSERT INTO curriculum (speciality_id, discipline_id, semester, hours, report_type)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, speciality_id AS "specialityId", discipline_id AS "disciplineId",
-        semester, hours, report_type AS "reportType"`,
+        semester, report_type AS "reportType"`,
       [
         Number(body.specialityId),
         Number(body.disciplineId),
         Number(body.semester),
-        Number(body.hours),
+        1,
         String(body.reportType).trim(),
       ]
     );
@@ -984,19 +1113,19 @@ app.put(
   "/api/curriculum/:id",
   asyncHandler(async (request, response) => {
     const body = request.body as Record<string, unknown>;
-    if (!requireFields(body, response, ["specialityId", "disciplineId", "semester", "hours", "reportType"])) return;
+    if (!requireFields(body, response, ["specialityId", "disciplineId", "semester", "reportType"])) return;
 
     const result = await query(
       `UPDATE curriculum
        SET speciality_id = $1, discipline_id = $2, semester = $3, hours = $4, report_type = $5
        WHERE id = $6
        RETURNING id, speciality_id AS "specialityId", discipline_id AS "disciplineId",
-        semester, hours, report_type AS "reportType"`,
+        semester, report_type AS "reportType"`,
       [
         Number(body.specialityId),
         Number(body.disciplineId),
         Number(body.semester),
-        Number(body.hours),
+        1,
         String(body.reportType).trim(),
         Number(routeParam(request.params.id)),
       ]
@@ -1026,7 +1155,10 @@ app.post(
 
     const studentId = Number(body.studentId);
     const disciplineId = Number(body.disciplineId);
+    const semester = Number(body.semester);
+    const grade = String(body.grade);
     if (!(await ensureTeacherCanWritePerformance(request, response, studentId, disciplineId))) return;
+    if (!(await ensureGradeMatchesCurriculum(response, studentId, disciplineId, semester, grade))) return;
 
     const result = await query(
       `INSERT INTO performance_records (student_id, discipline_id, study_year, semester, grade)
@@ -1037,8 +1169,8 @@ app.post(
         studentId,
         disciplineId,
         Number(body.studyYear),
-        Number(body.semester),
-        String(body.grade),
+        semester,
+        grade,
       ]
     );
 
@@ -1055,7 +1187,10 @@ app.put(
     const studentId = Number(body.studentId);
     const disciplineId = Number(body.disciplineId);
     const recordId = Number(routeParam(request.params.id));
+    const semester = Number(body.semester);
+    const grade = String(body.grade);
     if (!(await ensureTeacherCanWritePerformance(request, response, studentId, disciplineId, recordId))) return;
+    if (!(await ensureGradeMatchesCurriculum(response, studentId, disciplineId, semester, grade))) return;
 
     const result = await query(
       `UPDATE performance_records
@@ -1067,8 +1202,8 @@ app.put(
         studentId,
         disciplineId,
         Number(body.studyYear),
-        Number(body.semester),
-        String(body.grade),
+        semester,
+        grade,
         recordId,
       ]
     );

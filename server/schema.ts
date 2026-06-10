@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS curriculum (
   speciality_id INTEGER NOT NULL REFERENCES specialities(id) ON DELETE CASCADE,
   discipline_id INTEGER NOT NULL REFERENCES disciplines(id) ON DELETE RESTRICT,
   semester INTEGER NOT NULL CHECK (semester BETWEEN 1 AND 12),
-  hours INTEGER NOT NULL CHECK (hours > 0),
+  hours INTEGER NOT NULL DEFAULT 1 CHECK (hours > 0),
   report_type VARCHAR(40) NOT NULL,
   UNIQUE (speciality_id, discipline_id, semester)
 );
@@ -85,6 +85,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS middle_name VARCHAR(80) NOT NULL DEFA
 ALTER TABLE users ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES student_groups(id) ON DELETE SET NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id INTEGER REFERENCES students(id) ON DELETE SET NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS discipline_id INTEGER REFERENCES disciplines(id) ON DELETE SET NULL;
+ALTER TABLE curriculum ALTER COLUMN hours SET DEFAULT 1;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 UPDATE users SET role = 'education_staff' WHERE role = 'user';
 ALTER TABLE users
@@ -107,221 +108,22 @@ ALTER TABLE performance_records
   CHECK (grade IN ('5', '4', '3', '2', 'Зачет', 'Незачет'));
 `;
 
-const seedSql = `
-INSERT INTO education_forms (name) VALUES
-  ('Очная'),
-  ('Заочная'),
-  ('Очно-заочная')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO specialities (name) VALUES
-  ('Информационные системы'),
-  ('Программная инженерия')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO disciplines (name) VALUES
-  ('Базы данных'),
-  ('Программирование'),
-  ('Математика'),
-  ('Информационные технологии')
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO student_groups (name, speciality_id)
-SELECT 'ИС-22', id FROM specialities WHERE name = 'Информационные системы'
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO student_groups (name, speciality_id)
-SELECT 'ИС-23', id FROM specialities WHERE name = 'Информационные системы'
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO student_groups (name, speciality_id)
-SELECT 'ПИ-22', id FROM specialities WHERE name = 'Программная инженерия'
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO users (login, password, role, group_id)
-SELECT 'admin', '', 'admin', NULL
-ON CONFLICT (login) DO NOTHING;
-
-INSERT INTO users (login, password, role, group_id)
-SELECT 'staff', '', 'education_staff', NULL
-ON CONFLICT (login) DO NOTHING;
-
-INSERT INTO users (login, password, role, group_id, discipline_id)
-SELECT 'teacher', '', 'teacher', sg.id, d.id
-FROM student_groups sg, disciplines d
-WHERE sg.name = 'ИС-22' AND d.name = 'Базы данных'
-ON CONFLICT (login) DO NOTHING;
-
-INSERT INTO students (last_name, first_name, middle_name, admission_year, education_form_id, group_id)
-SELECT 'Иванов', 'Иван', 'Петрович', 2022, ef.id, sg.id
-FROM education_forms ef, student_groups sg
-WHERE ef.name = 'Очная' AND sg.name = 'ИС-22'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM students st
-    WHERE st.last_name = 'Иванов'
-      AND st.first_name = 'Иван'
-      AND st.middle_name = 'Петрович'
-      AND st.admission_year = 2022
-      AND st.education_form_id = ef.id
-      AND st.group_id = sg.id
-  );
-
-INSERT INTO students (last_name, first_name, middle_name, admission_year, education_form_id, group_id)
-SELECT 'Петрова', 'Анна', 'Сергеевна', 2023, ef.id, sg.id
-FROM education_forms ef, student_groups sg
-WHERE ef.name = 'Очная' AND sg.name = 'ИС-23'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM students st
-    WHERE st.last_name = 'Петрова'
-      AND st.first_name = 'Анна'
-      AND st.middle_name = 'Сергеевна'
-      AND st.admission_year = 2023
-      AND st.education_form_id = ef.id
-      AND st.group_id = sg.id
-  );
-
-INSERT INTO curriculum (speciality_id, discipline_id, semester, hours, report_type)
-SELECT s.id, d.id, 3, 72, 'Экзамен'
-FROM specialities s, disciplines d
-WHERE s.name = 'Информационные системы' AND d.name = 'Базы данных'
-ON CONFLICT (speciality_id, discipline_id, semester) DO NOTHING;
-
-INSERT INTO curriculum (speciality_id, discipline_id, semester, hours, report_type)
-SELECT s.id, d.id, 2, 108, 'Зачет'
-FROM specialities s, disciplines d
-WHERE s.name = 'Программная инженерия' AND d.name = 'Программирование'
-ON CONFLICT (speciality_id, discipline_id, semester) DO NOTHING;
-
-INSERT INTO performance_records (student_id, discipline_id, study_year, semester, grade)
-SELECT st.id, d.id, 2024, 3, '5'
-FROM students st, disciplines d
-WHERE st.id = (
-  SELECT id FROM students
-  WHERE last_name = 'Иванов' AND first_name = 'Иван' AND middle_name = 'Петрович'
-  ORDER BY id
-  LIMIT 1
-)
-AND d.name = 'Базы данных'
-ON CONFLICT (student_id, discipline_id, study_year, semester) DO NOTHING;
-
-INSERT INTO performance_records (student_id, discipline_id, study_year, semester, grade)
-SELECT st.id, d.id, 2024, 2, '4'
-FROM students st, disciplines d
-WHERE st.id = (
-  SELECT id FROM students
-  WHERE last_name = 'Петрова' AND first_name = 'Анна' AND middle_name = 'Сергеевна'
-  ORDER BY id
-  LIMIT 1
-)
-AND d.name = 'Программирование'
-ON CONFLICT (student_id, discipline_id, study_year, semester) DO NOTHING;
-`;
-
-async function cleanupDemoDuplicates() {
-  await query(`
-    WITH duplicates AS (
-      SELECT id,
-        MIN(id) OVER (
-          PARTITION BY last_name, first_name, middle_name, admission_year, education_form_id, group_id
-        ) AS keep_id
-      FROM students
-      WHERE (last_name, first_name, middle_name) IN (
-        ('Иванов', 'Иван', 'Петрович'),
-        ('Петрова', 'Анна', 'Сергеевна')
-      )
-    ),
-    duplicate_rows AS (
-      SELECT id, keep_id FROM duplicates WHERE id <> keep_id
-    )
-    UPDATE users u
-    SET student_id = d.keep_id
-    FROM duplicate_rows d
-    WHERE u.student_id = d.id
-  `);
-
-  await query(`
-    WITH duplicates AS (
-      SELECT id,
-        MIN(id) OVER (
-          PARTITION BY last_name, first_name, middle_name, admission_year, education_form_id, group_id
-        ) AS keep_id
-      FROM students
-      WHERE (last_name, first_name, middle_name) IN (
-        ('Иванов', 'Иван', 'Петрович'),
-        ('Петрова', 'Анна', 'Сергеевна')
-      )
-    )
-    DELETE FROM students st
-    USING duplicates d
-    WHERE st.id = d.id AND d.id <> d.keep_id
-  `);
-}
-
-async function ensureDemoPasswords() {
-  const adminHash = await bcrypt.hash("admin", 10);
-  const staffHash = await bcrypt.hash("staff", 10);
-  const teacherHash = await bcrypt.hash("teacher", 10);
+async function ensureDefaultAdmin() {
+  const login = process.env.DEFAULT_ADMIN_LOGIN || "admin";
+  const password = process.env.DEFAULT_ADMIN_PASSWORD || "admin";
+  const passwordHash = await bcrypt.hash(password, 10);
 
   await query(
-    `UPDATE users
-     SET password_hash = $1,
-       password = '',
-       last_name = COALESCE(NULLIF(last_name, ''), 'Системный'),
-       first_name = COALESCE(NULLIF(first_name, ''), 'Администратор'),
-       middle_name = COALESCE(middle_name, '')
-     WHERE login = 'admin'`,
-    [adminHash]
-  );
-  await query(
-    `UPDATE users
-     SET password_hash = $1,
-       password = '',
-       role = 'education_staff',
-       last_name = COALESCE(NULLIF(last_name, ''), 'Смирнова'),
-       first_name = COALESCE(NULLIF(first_name, ''), 'Мария'),
-       middle_name = COALESCE(NULLIF(middle_name, ''), 'Алексеевна'),
-       group_id = NULL,
-       student_id = NULL,
-       discipline_id = NULL
-     WHERE login IN ('user', 'staff')`,
-    [staffHash]
-  );
-  await query(
-    `UPDATE users
-     SET password_hash = $1,
-       password = '',
-       role = 'teacher',
-       last_name = COALESCE(NULLIF(last_name, ''), 'Кузнецов'),
-       first_name = COALESCE(NULLIF(first_name, ''), 'Андрей'),
-       middle_name = COALESCE(NULLIF(middle_name, ''), 'Викторович'),
-       group_id = COALESCE(group_id, (SELECT id FROM student_groups WHERE name = 'ИС-22')),
-       student_id = NULL,
-       discipline_id = COALESCE(discipline_id, (SELECT id FROM disciplines WHERE name = 'Базы данных'))
-     WHERE login = 'teacher'`,
-    [teacherHash]
-  );
-
-  await query(
-    `INSERT INTO teacher_groups (user_id, group_id)
-     SELECT u.id, sg.id
-     FROM users u, student_groups sg
-     WHERE u.login = 'teacher' AND sg.name = 'ИС-22'
-     ON CONFLICT (user_id, group_id) DO NOTHING`
-  );
-  await query(
-    `INSERT INTO teacher_disciplines (user_id, discipline_id)
-     SELECT u.id, d.id
-     FROM users u, disciplines d
-     WHERE u.login = 'teacher' AND d.name = 'Базы данных'
-     ON CONFLICT (user_id, discipline_id) DO NOTHING`
+    `INSERT INTO users (login, last_name, first_name, middle_name, password, password_hash, role)
+     VALUES ($1, 'Системный', 'Администратор', '', '', $2, 'admin')
+     ON CONFLICT (login) DO UPDATE
+     SET password_hash = COALESCE(users.password_hash, EXCLUDED.password_hash),
+       password = ''`,
+    [login, passwordHash]
   );
 }
 
 export async function initDatabase() {
   await query(schemaSql);
-  await query(seedSql);
-  await cleanupDemoDuplicates();
-  await ensureDemoPasswords();
+  await ensureDefaultAdmin();
 }

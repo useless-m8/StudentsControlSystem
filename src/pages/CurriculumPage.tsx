@@ -15,14 +15,19 @@ type CurriculumPageProps = {
   isAdmin: boolean;
 };
 
+const emptyCurriculumForm: Curriculum = {
+  id: 0,
+  specialityId: 1,
+  disciplineId: 1,
+  semester: 1,
+  reportType: "Экзамен",
+};
+
 export function CurriculumPage({ data, setData, isAdmin }: CurriculumPageProps) {
   const [form, setForm] = useState<Curriculum>({
-    id: 0,
+    ...emptyCurriculumForm,
     specialityId: data.specialities[0]?.id || 1,
     disciplineId: data.disciplines[0]?.id || 1,
-    semester: 1,
-    hours: 72,
-    reportType: "Экзамен",
   });
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -40,6 +45,11 @@ export function CurriculumPage({ data, setData, isAdmin }: CurriculumPageProps) 
         setData((prev) => ({ ...prev, curriculum: [...prev.curriculum, saved] }));
       }
       setEditingId(null);
+      setForm({
+        ...emptyCurriculumForm,
+        specialityId: data.specialities[0]?.id || 1,
+        disciplineId: data.disciplines[0]?.id || 1,
+      });
     } catch (error) {
       alert(getErrorMessage(error));
     }
@@ -57,33 +67,62 @@ export function CurriculumPage({ data, setData, isAdmin }: CurriculumPageProps) 
 
   return (
     <section>
-      <Header title="Учебный план" text="Дисциплины, семестры, часы и формы отчетности по специальностям." />
+      <Header
+        title="Учебный план"
+        text="Дисциплины, семестры и формы отчетности по специальностям."
+      />
       {isAdmin && (
         <form className="card form-grid" onSubmit={handleSubmit}>
-          <Select value={form.specialityId} onChange={(event) => setForm({ ...form, specialityId: Number(event.target.value) })}>
-            {data.specialities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </Select>
-          <Select value={form.disciplineId} onChange={(event) => setForm({ ...form, disciplineId: Number(event.target.value) })}>
-            {data.disciplines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </Select>
-          <Input type="number" placeholder="Семестр" value={form.semester} onChange={(event) => setForm({ ...form, semester: Number(event.target.value) })} />
-          <Input type="number" placeholder="Часы" value={form.hours} onChange={(event) => setForm({ ...form, hours: Number(event.target.value) })} />
-          <Select value={form.reportType} onChange={(event) => setForm({ ...form, reportType: event.target.value })}>
-            <option value="Экзамен">Экзамен</option>
-            <option value="Зачет">Зачет</option>
-            <option value="Курсовая работа">Курсовая работа</option>
-          </Select>
+          <label className="field-stack">
+            <span>Специальность</span>
+            <Select value={form.specialityId} onChange={(event) => setForm({ ...form, specialityId: Number(event.target.value) })}>
+              {data.specialities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+          </label>
+          <label className="field-stack">
+            <span>Дисциплина</span>
+            <Select value={form.disciplineId} onChange={(event) => setForm({ ...form, disciplineId: Number(event.target.value) })}>
+              {data.disciplines.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </Select>
+          </label>
+          <label className="field-stack">
+            <span>Семестр</span>
+            <Input type="number" placeholder="Например, 1" value={form.semester} onChange={(event) => setForm({ ...form, semester: Number(event.target.value) })} />
+          </label>
+          <label className="field-stack">
+            <span>Форма отчетности</span>
+            <Select value={form.reportType} onChange={(event) => setForm({ ...form, reportType: event.target.value })}>
+              <option value="Экзамен">Экзамен</option>
+              <option value="Зачет">Зачет</option>
+              <option value="Курсовая работа">Курсовая работа</option>
+            </Select>
+          </label>
           <Button type="submit">{editingId ? "Сохранить" : "Добавить запись"}</Button>
+          {editingId && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setEditingId(null);
+                setForm({
+                  ...emptyCurriculumForm,
+                  specialityId: data.specialities[0]?.id || 1,
+                  disciplineId: data.disciplines[0]?.id || 1,
+                });
+              }}
+            >
+              Отмена
+            </Button>
+          )}
         </form>
       )}
 
-      <DataTable empty={data.curriculum.length === 0} emptyText="Записей нет" colSpan={isAdmin ? 6 : 5}>
+      <DataTable empty={data.curriculum.length === 0} emptyText="Записей нет" colSpan={isAdmin ? 5 : 4}>
         <thead>
           <tr>
             <th>Специальность</th>
             <th>Дисциплина</th>
             <th>Семестр</th>
-            <th>Часы</th>
             <th>Отчетность</th>
             {isAdmin && <th>Действия</th>}
           </tr>
@@ -94,7 +133,6 @@ export function CurriculumPage({ data, setData, isAdmin }: CurriculumPageProps) 
               <td>{data.specialities.find((speciality) => speciality.id === item.specialityId)?.name}</td>
               <td>{data.disciplines.find((discipline) => discipline.id === item.disciplineId)?.name}</td>
               <td>{item.semester}</td>
-              <td>{item.hours}</td>
               <td>{item.reportType}</td>
               {isAdmin && (
                 <td className="actions">
